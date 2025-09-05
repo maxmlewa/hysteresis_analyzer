@@ -3,3 +3,5 @@ build/
 *.o
 *.out
 *.exe
+# VS Code Settings
+.vscode/
