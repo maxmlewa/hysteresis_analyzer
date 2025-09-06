@@ -12,8 +12,12 @@ struct DataPoint {
 
 class DataLoader {
 public:
-    static std::vector<DataPoint> loadData(const std::string& filename,
-                                           double Ms = 1.0);
+    static std::vector<DataPoint> loadData( const std::string& filename,
+                                            double Ms,
+                                            bool doOutlierRemoval,
+                                            double outlierK,
+                                            const std::string& scaleMode,
+                                            double percentile);
 };
 
 #endif
