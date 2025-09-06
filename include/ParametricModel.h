@@ -4,6 +4,9 @@
 #include <vector>
 #include <array>
 #include <cmath>
+#ifndef M_PI;
+#define M_PI 3.14159265358979323846
+#endif
 
 // Lapshin's improved parametric model (Rev. Sci. Instrum. 91, 065106 (2020))
 class ParametricModel {
