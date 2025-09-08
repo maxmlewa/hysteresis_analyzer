@@ -39,7 +39,7 @@ void ParametricModel::eval_alpha(double alpha, const Params &p, double &xout, do
     yout = Mscale*y;
 }
 
-// Sample curve
+// Sample curve uniformly at alpha across [0, 2PI]
 void ParametricModel::sample_curve(const Params &p, size_t N, std::vector<double> &H, 
                                     std::vector<double> &M) {
     H.clear(); M.clear();
@@ -74,4 +74,26 @@ double ParametricModel::loop_area(const Params &p, size_t N) {
         y0=y;
     }
     return std::fabs(area);
+
+}
+
+// EvaluateM(H) at query H by sampling and interpolation
+double ParametricModel::evaluate(double Hq, const Params &p, size_t N) {
+    
+    std::vector<double> H, M;
+    sample_curve(p, N, H, M);
+
+    // Nearest bracketing points
+    for (size_t i = 1; i < H.size(); i++) {
+        if((H[i-1] <= Hq && Hq <= H[i]) ||
+            (H[i] <= Hq && Hq <= H[i-1])) {
+                double t = (Hq - H[i-1]) / (H[i] - H[i-1]);
+                return M[i-1] + t * (M[i] - M[i-1]);
+            }
+    }
+
+    // Out of range: return the nearest endpoint
+    if (Hq < H.front()) return M.front();
+    if (Hq > H.back()) return M.back();
+    return 0.0;
 }

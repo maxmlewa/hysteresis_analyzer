@@ -30,6 +30,9 @@ public:
 
     // Loop area (numeric integration)
     static double loop_area(const Params &p, size_t N = 2000);
+
+    // Interpolate model to get M at a given H
+    static double evaluate(double Hq, const Params &p, size_t N = 2000);
 };
 
 #endif
