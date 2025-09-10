@@ -36,7 +36,7 @@ static bool write_model_csv(const std::string &path, const ParametricModel::Para
     return true;
 }
 
-// Write metrics JSON (simple, no dependency)
+// Write metrics JSON (no dependency)
 static bool write_metrics_json(const std::string &path, const FitResult &fit,
                                double dataMs, double dataMr, double dataHc, double dataArea) {
     std::ofstream f(path.c_str());
