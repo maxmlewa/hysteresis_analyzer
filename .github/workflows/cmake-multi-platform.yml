@@ -70,5 +70,5 @@ jobs:
     - name: Upload build artifacts
       uses: actions/upload-artifact@v4
       with:
-        name: hysteresis-analyzer-${{ runner.os }}
+        name: hysteresis-analyzer-${{ runner.os }}-${{ github.run_id }}
         path: ${{ steps.strings.outputs.build-output-dir }}/
