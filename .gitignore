@@ -1,8 +1,12 @@
 #Ignoring the build files
-build/
-*.o
-*.out
-*.exe
+/build/
+/CMakeFiles/
+/CMakeCache.txt
+/*.cmake
+/*.o
+/*.obj
+/*.out
+/*.exe
 # VS Code Settings
 .vscode/
 
@@ -10,3 +14,7 @@ build/
 /output/
 build/output/
 *.png
+
+# Local test data
+/data/*
+!data/.gitkeep #keep folder and ignore the contents
