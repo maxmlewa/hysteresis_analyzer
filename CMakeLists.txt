@@ -26,3 +26,11 @@ set(HEADERS
 include_directories(include)
 
 add_excecutable(hysteresis_analyzer ${SOURCE} ${HEADERS})
+
+# link the std++fs excplicitly for GCC < 9
+if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" AND CMAKE_CXX_COMPILER_VERSION VERSION_LESS 9)
+    target_link_libraries(hysteresis_analyzer stdc++fs)
+endif()
+
+# enable testing for later
+enable_testing()
