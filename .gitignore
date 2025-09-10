@@ -5,3 +5,8 @@ build/
 *.exe
 # VS Code Settings
 .vscode/
+
+# runtime outputs
+/output/
+build/output/
+*.png
