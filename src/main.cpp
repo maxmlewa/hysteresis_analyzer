@@ -120,8 +120,26 @@ int main(int argc, char* argv[]) {
               << " Hc=" << dataHc << " Area=" << dataArea << "\n";
 
     // Initial guess
-    ParametricModel::Params guess = {0.0, 1.0, 1.0, 3.0, 1.0,
-                                     0.0, 0.0, 0.0, 1.0, 1.0};
+    // Estimate scaling from data
+    double maxH = 0.0, maxM = 0.0;
+    for (auto &d : data) {
+        if (std::fabs(d.H) > maxH) maxH = std::fabs(d.H);
+        if (std::fabs(d.M) > maxM) maxM = std::fabs(d.M);
+    }
+
+    // Improved initial guess
+    ParametricModel::Params guess(10, 0.0);
+    guess[0] = 0.9;   // a
+    guess[1] = 1.0;   // bx
+    guess[2] = 1.0;   // by
+    guess[3] = 3.0;   // m
+    guess[4] = 1.0;   // n
+    guess[5] = 0.0;   // delta alpha1
+    guess[6] = 0.0;   // delta alpha2
+    guess[7] = 0.0;   // delta alpha3
+    guess[8] = maxH;  // Hscale
+    guess[9] = dataMs;  // Mscale
+
     FitResult res;
     if (!ModelFitter::fit_staged(data, guess, res)) {
         std::cerr << "Model fit failed\n";

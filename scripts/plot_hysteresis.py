@@ -75,9 +75,9 @@ def annotate_metrics(ax, x, y, label_prefix = "Data", color = None):
 
     #place the annotation to the top-left/ change according to the plot forms
 
-    ax.txt(0.02, 0.98 if color is None else 0.98, txt,
+    ax.text(0.02, 0.98 if color is None else 0.98, txt,
            transform= ax.transAxes, fontsize = 9,
-           verticalalignments = 'top', 
+           verticalalignment = 'top', ha = 'left',
            bbox = dict(facecolor='white', alpha=0.8, edgecolor='none'))
     
 def main():
