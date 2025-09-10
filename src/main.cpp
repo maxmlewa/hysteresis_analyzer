@@ -12,6 +12,10 @@
 #include <iomanip>
 #include <cstdio>
 
+#include <filesystem>
+
+namespace fs = std::filesystem;
+
 
 // Write preprocessed data CSV
 static bool write_data_csv(const std::string &path, const std::vector<DataPoint> &data) {
@@ -26,6 +30,7 @@ static bool write_data_csv(const std::string &path, const std::vector<DataPoint>
 
 // Write sampled model CSV (H,ModelM)
 static bool write_model_csv(const std::string &path, const ParametricModel::Params &p, size_t N=2000) {
+    if (p.empty()) return false;
     std::vector<double> Hs, Ms;
     ParametricModel::sample_curve(p, N, Hs, Ms);
     std::ofstream f(path.c_str());
@@ -89,14 +94,21 @@ int main(int argc, char* argv[]) {
         else { std::cerr << "Unknown arg: " << a << "\n"; print_usage_and_exit(); }
     }
 
-    // create output dir
-    std::string cmd = "mkdir -p " + outdir;
-    int rc = std::system(cmd.c_str());
-    (void)rc;
+    // create output dir - making it crossplatform
+    try{
+        fs::create_directories(outdir);
+    } catch (const std::exception& e) {
+        std::cerr << "Error creating output directory:" << e.what() << "\n";
+        return 1;
+    }
+
 
     // Load & preprocess data
     auto data = DataLoader::loadData(filename, Ms, true, 3.0, "rms", 0.95);
-    if (data.empty()) { std::cerr << "Failed to load data\n"; return 1; }
+    if (data.empty()) { 
+        std::cerr << "Failed to load data\n"; 
+        return 1; 
+    }
 
     // Simple analyzer
     double dataMs = HysteresisAnalyzer::computeSaturation(data);
