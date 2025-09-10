@@ -12,6 +12,7 @@ set(SOURCES
     src/ParametricModel.cpp
     src/ModelFitter.cpp
     src/LMOptimizer.cpp
+    src/PolynomialModel.cpp
    )
 
 # header files
@@ -21,6 +22,7 @@ set(HEADERS
     include/ParametricModel.h
     include/ModelFitter.h
     include/LMOptimizer.h
+    include/PolynomialModel.h
    )
 
 include_directories(include)

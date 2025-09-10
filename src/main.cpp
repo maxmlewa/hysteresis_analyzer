@@ -2,6 +2,7 @@
 #include "HysteresisAnalyzer.h"
 #include "ModelFitter.h"
 #include "ParametricModel.h"
+#include "PolynomialModel.h"
 
 #include <iostream>
 #include <fstream>
@@ -11,24 +12,22 @@
 #include <sstream>
 #include <iomanip>
 #include <cstdio>
-
 #include <filesystem>
 
 namespace fs = std::filesystem;
 
+// ----------------- CSV Writers -----------------
 
-// Write preprocessed data CSV
+// Preprocessed data CSV
 static bool write_data_csv(const std::string &path, const std::vector<DataPoint> &data) {
     std::ofstream f(path.c_str());
     if (!f.is_open()) return false;
     f << "H,M\n";
     for (const auto &d : data) f << std::setprecision(10) << d.H << "," << d.M << "\n";
-    f.close();
     return true;
 }
 
-
-// Write sampled model CSV (H,ModelM)
+// Parametric model CSV
 static bool write_model_csv(const std::string &path, const ParametricModel::Params &p, size_t N=2000) {
     if (p.empty()) return false;
     std::vector<double> Hs, Ms;
@@ -37,13 +36,14 @@ static bool write_model_csv(const std::string &path, const ParametricModel::Para
     if (!f.is_open()) return false;
     f << "H,ModelM\n";
     for (size_t i = 0; i < Hs.size(); ++i) f << std::setprecision(10) << Hs[i] << "," << Ms[i] << "\n";
-    f.close();
     return true;
 }
 
-// Write metrics JSON (no dependency)
-static bool write_metrics_json(const std::string &path, const FitResult &fit,
-                               double dataMs, double dataMr, double dataHc, double dataArea) {
+// Write metrics JSON (simple)
+static bool write_metrics_json(const std::string &path,
+                               const FitResult &fit,
+                               double dataMs, double dataMr, double dataHc, double dataArea,
+                               double polyMs, double polyMr, double polyHc, double polyArea) {
     std::ofstream f(path.c_str());
     if (!f.is_open()) return false;
     f << "{\n";
@@ -53,14 +53,19 @@ static bool write_metrics_json(const std::string &path, const FitResult &fit,
     f << "    \"Hc\": " << dataHc << ",\n";
     f << "    \"Area\": " << dataArea << "\n";
     f << "  },\n";
-    f << "  \"model\": {\n";
+    f << "  \"parametric\": {\n";
     f << "    \"Ms\": " << fit.Ms_model << ",\n";
     f << "    \"Mr\": " << fit.Mr_model << ",\n";
     f << "    \"Hc\": " << fit.Hc_model << ",\n";
     f << "    \"Area\": " << fit.area_model << "\n";
+    f << "  },\n";
+    f << "  \"polynomial\": {\n";
+    f << "    \"Ms\": " << polyMs << ",\n";
+    f << "    \"Mr\": " << polyMr << ",\n";
+    f << "    \"Hc\": " << polyHc << ",\n";
+    f << "    \"Area\": " << polyArea << "\n";
     f << "  }\n";
     f << "}\n";
-    f.close();
     return true;
 }
 
@@ -84,7 +89,7 @@ int main(int argc, char* argv[]) {
     bool plotAuto = false;
     std::string outdir = "output";
 
-    // parse simple args
+    // parse args
     for (int i = 2; i < argc; ++i) {
         std::string a = argv[i];
         if (a == "--Ms" && i+1 < argc) { Ms = atof(argv[++i]); }
@@ -94,98 +99,95 @@ int main(int argc, char* argv[]) {
         else { std::cerr << "Unknown arg: " << a << "\n"; print_usage_and_exit(); }
     }
 
-    // create output dir - making it crossplatform
-    try{
+    try {
         fs::create_directories(outdir);
     } catch (const std::exception& e) {
-        std::cerr << "Error creating output directory:" << e.what() << "\n";
+        std::cerr << "Error creating output directory: " << e.what() << "\n";
         return 1;
     }
 
-
     // Load & preprocess data
     auto data = DataLoader::loadData(filename, Ms, true, 3.0, "rms", 0.95);
-    if (data.empty()) { 
-        std::cerr << "Failed to load data\n"; 
-        return 1; 
-    }
+    if (data.empty()) { std::cerr << "Failed to load data\n"; return 1; }
 
-    // Simple analyzer
+    // Analyzer metrics
     double dataMs = HysteresisAnalyzer::computeSaturation(data);
     double dataMr = HysteresisAnalyzer::computeRemanence(data);
     double dataHc = HysteresisAnalyzer::computeCoercivity(data);
     double dataArea = HysteresisAnalyzer::computeLoopArea(data);
 
-    std::cout << "Data-derived: Ms=" << dataMs << " Mr=" << dataMr
-              << " Hc=" << dataHc << " Area=" << dataArea << "\n";
-
-    // Initial guess
-    // Estimate scaling from data
-    double maxH = 0.0, maxM = 0.0;
-    for (auto &d : data) {
-        if (std::fabs(d.H) > maxH) maxH = std::fabs(d.H);
-        if (std::fabs(d.M) > maxM) maxM = std::fabs(d.M);
-    }
-
-    // Improved initial guess
+    // Parametric fit
+    double maxH = 0.0;
+    for (auto &d : data) maxH = std::max(maxH, std::fabs(d.H));
     ParametricModel::Params guess(10, 0.0);
-    guess[0] = 0.9;   // a
-    guess[1] = 1.0;   // bx
-    guess[2] = 1.0;   // by
-    guess[3] = 3.0;   // m
-    guess[4] = 1.0;   // n
-    guess[5] = 0.0;   // delta alpha1
-    guess[6] = 0.0;   // delta alpha2
-    guess[7] = 0.0;   // delta alpha3
-    guess[8] = maxH;  // Hscale
-    guess[9] = dataMs;  // Mscale
+    guess[0] = 0.9; guess[1] = 1.0; guess[2] = 1.0;
+    guess[3] = 3.0; guess[4] = 1.0;
+    guess[5] = guess[6] = guess[7] = 0.0;
+    guess[8] = maxH; guess[9] = dataMs;
 
     FitResult res;
     if (!ModelFitter::fit_staged(data, guess, res)) {
-        std::cerr << "Model fit failed\n";
-    } else {
-        std::cout << "Model fit SSE=" << res.sse << "\n";
-        std::cout << "Model-derived: Ms=" << res.Ms_model
-                  << " Mr=" << res.Mr_model
-                  << " Hc=" << res.Hc_model
-                  << " Area=" << res.area_model << "\n";
+        std::cerr << "Parametric model fit failed\n";
     }
+
+    // Polynomial fit
+    PolynomialFitResult polyRes = PolynomialModel::fit(data, 9);
+    double polyMs = PolynomialModel::computeSaturation(polyRes);
+    double polyMr = PolynomialModel::computeRemanence(polyRes);
+    double polyHc = PolynomialModel::computeCoercivity(polyRes);
+    double polyArea = PolynomialModel::computeLoopArea(polyRes);
+
+    // Tabular output
+    std::cout << "\n=== Hysteresis Loop Metrics ===\n";
+    std::cout << std::setw(12) << "Source"
+              << std::setw(12) << "Ms"
+              << std::setw(12) << "Mr"
+              << std::setw(12) << "Hc"
+              << std::setw(12) << "Area" << "\n";
+    std::cout << std::string(60, '-') << "\n";
+
+    std::cout << std::setw(12) << "Data"
+              << std::setw(12) << dataMs
+              << std::setw(12) << dataMr
+              << std::setw(12) << dataHc
+              << std::setw(12) << dataArea << "\n";
+
+    std::cout << std::setw(12) << "Parametric"
+              << std::setw(12) << res.Ms_model
+              << std::setw(12) << res.Mr_model
+              << std::setw(12) << res.Hc_model
+              << std::setw(12) << res.area_model << "\n";
+
+    std::cout << std::setw(12) << "Polynomial"
+              << std::setw(12) << polyMs
+              << std::setw(12) << polyMr
+              << std::setw(12) << polyHc
+              << std::setw(12) << polyArea << "\n";
 
     // Exports
     std::string data_csv = outdir + "/data_preprocessed.csv";
     std::string model_csv = outdir + "/model_fit.csv";
+    std::string poly_csv = outdir + "/poly_fit.csv";
     std::string metrics_json = outdir + "/metrics.json";
 
-    if (!write_data_csv(data_csv, data)) {
-        std::cerr << "Warning: failed to write " << data_csv << "\n";
-    }
-    if (!write_model_csv(model_csv, res.final_params, 3000)) {
-        std::cerr << "Warning: failed to write " << model_csv << "\n";
-    }
-    if (!write_metrics_json(metrics_json, res, dataMs, dataMr, dataHc, dataArea)) {
-        std::cerr << "Warning: failed to write " << metrics_json << "\n";
-    }
+    write_data_csv(data_csv, data);
+    write_model_csv(model_csv, res.final_params, 3000);
+    PolynomialModel::write_csv(poly_csv, polyRes, 2000);
+    write_metrics_json(metrics_json, res, dataMs, dataMr, dataHc, dataArea,
+                       polyMs, polyMr, polyHc, polyArea);
 
-    // Optionally call the Python plotter automatically
+    // Plotting
     if (plotAuto) {
         std::ostringstream pcmd;
         pcmd << "python3 scripts/plot_hysteresis.py"
              << " --data " << data_csv
              << " --model " << model_csv
+             << " --poly " << poly_csv
              << " --metrics " << metrics_json
              << " --which " << plotMode;
         std::cout << "Running: " << pcmd.str() << "\n";
-        int r = std::system(pcmd.str().c_str());
-        if (r != 0) {
-            std::cerr << "Warning: plotting command returned " << r << "\n";
-        }
+        std::system(pcmd.str().c_str());
     }
-
-    std::cout << "Exports written to: " << outdir << "\n";
-    std::cout << "To visualize, run:\n"
-              << "  python3 scripts/plot_hysteresis.py --data " << data_csv
-              << " --model " << model_csv << " --metrics " << metrics_json
-              << " --which " << plotMode << "\n";
 
     return 0;
 }

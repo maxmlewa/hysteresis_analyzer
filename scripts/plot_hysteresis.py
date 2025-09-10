@@ -1,148 +1,119 @@
 #!/usr/bin/env python3
 """
-Plot the hysteresis loop data and model fits
+plot_hysteresis.py
 
-Usage: python3 plot_hysteresis.py -- data output/data_preprocessed.csv \
-                                  -- model output/model_fit.csv \
-                                  -- metrics output/metrics.json \
-                                  -- which both \
-                                  -- save output/ loop_plot.png
+Usage:
+  python3 scripts/plot_hysteresis.py --data output/data_preprocessed.csv \
+      --model output/model_fit.csv --poly output/poly_fit.csv --metrics output/metrics.json --which both --save output/plot.png
 
-Options:
---data    CSV with columns: H,M (preprocessed data)
---model   CSV with columns: H,ModelM (parametric model sampled)
---metrics JSON file containing derived metrics for 'data' and 'model'
---which  one of: data | model | both    (default: both)
---save   path to save PNG (if omitted, interactive window is shown)
---dpi    DPI for saved PNG (default 150)
---marker-size size of scatter markers (default 4)
---linewidth model line width (default 1.5)
+This script:
+ - plots preprocessed data (H vs M) as points
+ - overlays parametric model (if provided) as green line
+ - overlays polynomial up (red) and down (blue) from poly CSV (if provided)
+ - annotates metrics for data, parametric, polynomial (if metrics.json contains them)
+ - optionally saves PNG with --save <path>
 """
+
 import argparse
+import pandas as pd
+import matplotlib.pyplot as plt
 import json
 import os
 import sys
 
-import matplotlib.pyplot as plt
-import numpy as np
-
-def read_csv(path):
+def load_csv(path):
     try:
-        import csv
-        H = []
-        M = []
-        with open(path, 'r') as f:
-            rdr = csv.reader(f)
-            header = next(rdr)
-
-            #figure column indices
-            idxH = 0
-            idxM = 1
-
-            if any(h.lower().startswith('h') for h in header): #trying to detecct headers
-                for i,h in enumerate(header):
-                    if h.strip().lower().startswith('h'): idxH = i
-                    if h.strip().lower().startswith('m'): idxM = i
-
-            else: #then the header is numeric and should be treated as raw data
-                f.seek(0)
-                rdr = csv.reader(f)
-
-            for row in rdr:
-                if len(row) < max(idxH, idxM) + 1: continue
-                try:
-                    H.append(float(row[idxH]))
-                    M.append(float(row[idxM]))
-                except:
-                    continue
-        return np.array(H), np.array(M)
+        return pd.read_csv(path)
     except Exception as e:
-        print("Error reading the CSV:", e)
-        sys.exit(1)
+        print(f"Error reading {path}: {e}", file=sys.stderr)
+        return None
 
-
-
-def annotate_metrics(ax, x, y, label_prefix = "Data", color = None):
-    #x, y are dicts with the keys as the parameters: Ms, Mr, Hc, Area
-    if x is None:
-        return
-
+def annotate_metrics(ax, metrics, x0, color, label_prefix):
     txt = (f"{label_prefix}:\n"
-           f"Ms = {x.get('Ms', np.nan):.4g}:\n"
-           f"Mr = {x.get('Mr', np.nan):.4g}:\n"
-           f"Hc = {x.get('Hc', np.nan):.4g}:\n"
-           f"Area = {x.get('Area', np.nan):.4g}:\n")
+           f"Ms = {metrics['Ms']:.4g}\n"
+           f"Mr = {metrics['Mr']:.4g}\n"
+           f"Hc = {metrics['Hc']:.4g}\n"
+           f"Area= {metrics['Area']:.4g}")
+    ax.text(x0, 0.98, txt, transform=ax.transAxes,
+            fontsize=9, verticalalignment='top',
+            bbox=dict(facecolor='white', alpha=0.8, edgecolor='none'),
+            color=color)
 
-    #place the annotation to the top-left/ change according to the plot forms
-
-    ax.text(0.02, 0.98 if color is None else 0.98, txt,
-           transform= ax.transAxes, fontsize = 9,
-           verticalalignment = 'top', ha = 'left',
-           bbox = dict(facecolor='white', alpha=0.8, edgecolor='none'))
-    
 def main():
-    parser = argparse.ArgumentParser(description="Plot hysteresis data & model")
-    parser.add_argument("--data", type=str, help="CSV: H,M (preprocessed data)")
-    parser.add_argument("--model", type=str, help="CSV: H,ModelM (model samples)")
-    parser.add_argument("--metrics", type=str, help="JSON metrics file")
-    parser.add_argument("--which", type=str, choices=['data','model','both'], default='both',
-                        help="Which series to display")
-    parser.add_argument("--save", type=str, default=None, help="Save PNG to path")
-    parser.add_argument("--dpi", type=int, default=150)
-    parser.add_argument("--marker-size", type=float, default=4.0)
-    parser.add_argument("--linewidth", type=float, default=1.5)
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--data", required=True, help="CSV: H,M")
+    parser.add_argument("--model", help="Parametric model CSV: H,ModelM")
+    parser.add_argument("--poly", help="Polynomial CSV: H,Mup,Mdown")
+    parser.add_argument("--metrics", required=True, help="metrics JSON from C++")
+    parser.add_argument("--which", default="both", choices=["data","model","both"],
+                        help="what to plot")
+    parser.add_argument("--save", help="If provided, save the figure to this path")
     args = parser.parse_args()
 
-    H_data = M_data = None
-    H_model = M_model = None
-    metrics = {}
+    data = load_csv(args.data)
+    model = load_csv(args.model) if args.model else None
+    poly = load_csv(args.poly) if args.poly else None
 
-    if args.data:
-        H_data, M_data = read_csv(args.data)
-    if args.model:
-        H_model, M_model = read_csv(args.model)
-    if args.metrics and os.path.exists(args.metrics):
-        try:
-            with open(args.metrics, 'r') as f:
-                metrics = json.load(f)
-        except Exception as e:
-            print("Warning: could not read metrics JSON:", e)
+    # load metrics JSON
+    try:
+        with open(args.metrics, "r") as fh:
+            metrics = json.load(fh)
+    except Exception as e:
+        print(f"Error reading metrics JSON: {e}", file=sys.stderr)
+        metrics = {}
 
-    fig, ax = plt.subplots(figsize=(8,6))
-    ax.set_xlabel("Magnetizing Field H (Oe)")
-    ax.set_ylabel("Magnetization M (normalized)")
-    ax.grid(True, linestyle=':', linewidth=0.6)
+    fig, ax = plt.subplots(figsize=(7,7))
 
-    plotted = False
-    if args.which in ('data','both') and H_data is not None:
-        ax.scatter(H_data, M_data, s=args.marker_size, label="Preprocessed data", alpha=0.9)
-        plotted = True
-    if args.which in ('model','both') and H_model is not None:
-        # sort model by H for clean line
-        order = np.argsort(H_model)
-        ax.plot(H_model[order], M_model[order], linewidth=args.linewidth, label="Parametric model")
-        plotted = True
+    # raw data scatter
+    if data is not None and args.which in ("data","both"):
+        if "H" in data.columns and "M" in data.columns:
+            ax.scatter(data["H"], data["M"], s=8, alpha=0.6, label="Data (preprocessed)")
+        else:
+            print("Data CSV missing H/M columns", file=sys.stderr)
 
-    # zero axes lines
-    ax.axhline(0, color='k', linewidth=0.6, linestyle='-')
-    ax.axvline(0, color='k', linewidth=0.6, linestyle='-')
+    # parametric model line
+    if model is not None and args.which in ("model","both"):
+        if "H" in model.columns and "ModelM" in model.columns:
+            ax.plot(model["H"], model["ModelM"], '-', linewidth=1.5, label="Parametric model", color="green")
+        else:
+            print("Model CSV missing H/ModelM columns", file=sys.stderr)
 
-    # annotate metrics if available
-    data_metrics = metrics.get('data', None)
-    model_metrics = metrics.get('model', None)
-    annotate_metrics(ax, data_metrics, None, label_prefix="Data")
-    annotate_metrics(ax, model_metrics, None, label_prefix="Model")
+    # polynomial up/down
+    if poly is not None and args.which in ("model","both"):
+        # poly CSV format expected: H,Mup,Mdown
+        if {"H","Mup","Mdown"}.issubset(set(poly.columns)):
+            ax.plot(poly["H"], poly["Mup"], '-', linewidth=1.2, label="Poly up", color="red")
+            ax.plot(poly["H"], poly["Mdown"], '-', linewidth=1.2, label="Poly down", color="blue")
+            # fill between (visualize loop area)
+            try:
+                ax.fill_between(poly["H"], poly["Mup"], poly["Mdown"], color="gray", alpha=0.15)
+            except Exception:
+                pass
+        else:
+            print("Poly CSV missing expected columns H,Mup,Mdown", file=sys.stderr)
 
-    if not plotted:
-        print("No data plotted. Provide --data and/or --model files.")
-        return
+    ax.set_xlabel("H (Oe)")
+    ax.set_ylabel("M (normalized)")
+    ax.grid(True)
+    ax.legend()
 
-    ax.legend(loc='best')
-    fig.tight_layout()
+    # annotations: arrange left, center, right
+    left_x = 0.02; mid_x = 0.35; right_x = 0.68
+    if "data" in metrics:
+        annotate_metrics(ax, metrics["data"], left_x, "black", "Data")
+    if "parametric" in metrics:
+        annotate_metrics(ax, metrics["parametric"], mid_x, "green", "Parametric")
+    if "polynomial" in metrics:
+        annotate_metrics(ax, metrics["polynomial"], right_x, "red", "Polynomial")
+
+    plt.tight_layout()
 
     if args.save:
-        plt.savefig(args.save, dpi=args.dpi)
-        print("Saved plot to:", args.save)
+        outdir = os.path.dirname(args.save)
+        if outdir and not os.path.exists(outdir):
+            os.makedirs(outdir, exist_ok=True)
+        plt.savefig(args.save, dpi=200)
+        print(f"Saved figure to {args.save}")
     else:
         plt.show()
 
