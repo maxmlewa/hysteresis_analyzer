@@ -1,17 +1,17 @@
 cmake_minimum_required(VERSION 3.10)
 project(hysteresis_analyzer CXX)
 
-set(CMAKE_CXX_STANDARD 11)
+set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # source files
 set(SOURCES
     src/main.cpp
     src/DataLoader.cpp
-    src/HystersisAnalyzer.cpp
+    src/HysteresisAnalyzer.cpp
     src/ParametricModel.cpp
     src/ModelFitter.cpp
-    src/LMOptimixer.cpp
+    src/LMOptimizer.cpp
    )
 
 # header files
@@ -25,7 +25,7 @@ set(HEADERS
 
 include_directories(include)
 
-add_excecutable(hysteresis_analyzer ${SOURCE} ${HEADERS})
+add_executable(hysteresis_analyzer ${SOURCES} ${HEADERS})
 
 # link the std++fs excplicitly for GCC < 9
 if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" AND CMAKE_CXX_COMPILER_VERSION VERSION_LESS 9)
